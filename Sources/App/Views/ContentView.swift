@@ -14,6 +14,11 @@ struct ContentView: View {
                     Label("Rules", systemImage: "list.bullet.rectangle")
                 }
             
+            ProxyListView()
+                .tabItem {
+                    Label("Proxies", systemImage: "server.rack")
+                }
+            
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gear")

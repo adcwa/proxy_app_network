@@ -49,6 +49,7 @@ public class ConnectionManager {
             guard let conn = self.activeConnections[id] else { return }
             conn.stats.bytesSent += sent
             conn.stats.bytesReceived += received
+            self.saveState() // Naive persistence on every update (optimize in prod)
         }
     }
     
@@ -57,4 +58,34 @@ public class ConnectionManager {
             Array(activeConnections.values)
         }
     }
+    
+    private func saveState() {
+        // Debounce? For MVP, just write.
+        guard let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.proxyApp.network")?.appendingPathComponent("connections.json") else { return }
+        
+        let connections = activeConnections.values.map { conn in
+             // Simplified struct for JSON
+             return ConnectionSnapshot(
+                id: conn.id,
+                app: conn.sourceApp ?? "Unknown",
+                host: conn.targetHost,
+                port: conn.targetPort,
+                type: "TCP", // TODO: Dynamic
+                status: "Active"
+             )
+        }
+        
+        if let data = try? JSONEncoder().encode(connections) {
+            try? data.write(to: url)
+        }
+    }
+}
+
+public struct ConnectionSnapshot: Codable, Identifiable {
+    public let id: UUID
+    public let app: String
+    public let host: String
+    public let port: Int
+    public let type: String
+    public let status: String
 }

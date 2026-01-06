@@ -1,20 +1,10 @@
 import SwiftUI
 
-struct ConnectionItem: Identifiable {
-    let id = UUID()
-    let app: String
-    let host: String
-    let port: Int
-    let type: String
-    let status: String
-}
+import ProxyEngine
 
 struct ConnectionListView: View {
-    // Mock data for MVP display
-    @State private var connections: [ConnectionItem] = [
-        ConnectionItem(app: "Safari", host: "google.com", port: 443, type: "HTTPS", status: "Active"),
-        ConnectionItem(app: "Slack", host: "slack.com", port: 443, type: "Direct", status: "Active")
-    ]
+    @State private var connections: [ConnectionSnapshot] = []
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     var body: some View {
         VStack(alignment: .leading) {
@@ -22,14 +12,42 @@ struct ConnectionListView: View {
                 .font(.headline)
                 .padding(.bottom, 5)
             
-            Table(connections) {
-                TableColumn("Application", value: \.app)
-                TableColumn("Host", value: \.host)
-                TableColumn("Port") { item in Text("\(item.port)") }
-                TableColumn("Type", value: \.type)
-                TableColumn("Status", value: \.status)
+            if connections.isEmpty {
+                VStack {
+                    Spacer()
+                    Text("No Active Connections")
+                        .foregroundColor(.secondary)
+                        .font(.title3)
+                    Text("Start the proxy to see connections here")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                    Spacer()
+                }
+            } else {
+                Table(connections) {
+                    TableColumn("Application", value: \.app)
+                    TableColumn("Host", value: \.host)
+                    TableColumn("Port") { item in Text("\(item.port)") }
+                    TableColumn("Type", value: \.type)
+                    TableColumn("Status", value: \.status)
+                }
             }
         }
         .padding()
+        .onReceive(timer) { _ in
+            loadConnections()
+        }
+        .onAppear {
+            loadConnections()
+        }
+    }
+    
+    private func loadConnections() {
+        guard let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.proxyApp.network")?.appendingPathComponent("connections.json") else { return }
+        
+        if let data = try? Data(contentsOf: url),
+           let loaded = try? JSONDecoder().decode([ConnectionSnapshot].self, from: data) {
+            self.connections = loaded
+        }
     }
 }

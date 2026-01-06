@@ -4,20 +4,58 @@ import NetworkExtension
 class ExtensionManager: ObservableObject {
     static let shared = ExtensionManager()
     
+    @Published var status: NEVPNStatus = .disconnected
     @Published var isEnabled = false
+    @Published var lastError: String?
+    
+    private var manager: NETunnelProviderManager?
+    
+    private init() {
+        loadManager()
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(statusDidChange), name: .NEVPNStatusDidChange, object: nil)
+    }
+    
+    @objc private func statusDidChange(_ notification: Notification) {
+        // Reload status from the manager connection
+        // Note: The notification object might be the NEVPNConnection
+        guard let connection = notification.object as? NEVPNConnection else { return }
+        DispatchQueue.main.async {
+            self.status = connection.status
+        }
+    }
+    
+    func loadManager() {
+        NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self?.lastError = "Load Error: \(error.localizedDescription)"
+                    return
+                }
+                
+                self?.manager = managers?.first ?? NETunnelProviderManager()
+                self?.isEnabled = self?.manager?.isEnabled ?? false
+                self?.status = self?.manager?.connection.status ?? .disconnected
+            }
+        }
+    }
     
     func installProfile() {
-        // Logic to save profile to disk and notify extension
+        // Creating a new manager effectively installs the profile if saved
+        loadManager()
     }
     
     func startExtension() {
-        NETunnelProviderManager.loadAllFromPreferences { managers, error in
+        guard let manager = self.manager else {
+            lastError = "Manager not loaded"
+            return
+        }
+        
+        manager.loadFromPreferences { [weak self] error in
             if let error = error {
-                print("Failed to load preferences: \(error)")
+                DispatchQueue.main.async { self?.lastError = "Load Prefs Error: \(error.localizedDescription)" }
                 return
             }
-            
-            let manager = managers?.first ?? NETunnelProviderManager()
             
             // Setup protocol configuration
             let protocolConfiguration = NETunnelProviderProtocol()
@@ -27,15 +65,15 @@ class ExtensionManager: ObservableObject {
             manager.protocolConfiguration = protocolConfiguration
             manager.isEnabled = true
             
-            manager.saveToPreferences { error in
+            manager.saveToPreferences { [weak self] error in
                 if let error = error {
-                    print("Failed to save preferences: \(error)")
+                    DispatchQueue.main.async { self?.lastError = "Save Prefs Error: \(error.localizedDescription)" }
                 } else {
                     // Start the tunnel
                     do {
                         try manager.connection.startVPNTunnel()
                     } catch {
-                        print("Failed to start tunnel: \(error)")
+                        DispatchQueue.main.async { self?.lastError = "Start Tunnel Error: \(error.localizedDescription)" }
                     }
                 }
             }
@@ -43,9 +81,26 @@ class ExtensionManager: ObservableObject {
     }
     
     func stopExtension() {
-        NETunnelProviderManager.loadAllFromPreferences { managers, error in
-            guard let manager = managers?.first else { return }
-            manager.connection.stopVPNTunnel()
+        manager?.connection.stopVPNTunnel()
+    }
+    
+    func sendRuleUpdate() {
+        guard let manager = self.manager,
+              let session = manager.connection as? NETunnelProviderSession else {
+            lastError = "Cannot send message: Extension not connected"
+            return
+        }
+        
+        do {
+            try session.sendProviderMessage("reload_rules".data(using: .utf8)!) { response in
+                if let response = response, let msg = String(data: response, encoding: .utf8) {
+                    print("Extension response: \(msg)")
+                }
+            }
+        } catch {
+            DispatchQueue.main.async {
+                self.lastError = "Failed to send message: \(error.localizedDescription)"
+            }
         }
     }
 }

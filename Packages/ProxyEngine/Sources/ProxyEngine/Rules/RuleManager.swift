@@ -1,23 +1,23 @@
 import Foundation
 
-public enum RuleType {
+public enum RuleType: Codable {
     case domain(String) // e.g., "*.google.com"
     case ip(String)     // e.g., "192.168.1.0/24"
     case app(String)    // e.g., "com.apple.safari"
     case all
 }
 
-public enum RuleAction {
+public enum RuleAction: Codable {
     case direct
     case proxy(host: String, port: Int, type: ProxyType)
 }
 
-public enum ProxyType {
+public enum ProxyType: Codable {
     case socks5
     case http
 }
 
-public struct Rule {
+public struct Rule: Codable, Identifiable {
     public let id: UUID
     public let type: RuleType
     public let action: RuleAction
@@ -32,14 +32,40 @@ public struct Rule {
 public class RuleManager {
     private var rules: [Rule] = []
     
-    public init() {}
+    public init() {
+        loadRules()
+    }
     
     public func add(rule: Rule) {
         rules.append(rule)
+        saveRules()
+    }
+    
+    public func getRules() -> [Rule] {
+        return rules
     }
     
     public func clear() {
         rules.removeAll()
+        saveRules()
+    }
+    
+    private var rulesURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.proxyApp.network")?.appendingPathComponent("rules.json")
+    }
+    
+    public func loadRules() {
+        guard let url = rulesURL, let data = try? Data(contentsOf: url) else { return }
+        if let loaded = try? JSONDecoder().decode([Rule].self, from: data) {
+            self.rules = loaded
+        }
+    }
+    
+    private func saveRules() {
+        guard let url = rulesURL else { return }
+        if let data = try? JSONEncoder().encode(rules) {
+            try? data.write(to: url)
+        }
     }
     
     /// Matches a connection request against the rules
@@ -66,16 +92,58 @@ public class RuleManager {
             return bundleId.localizedCaseInsensitiveContains(appPattern) // Simplified matching
             
         case .domain(let domainPattern):
-            // Simple wildcard matching: *.example.com matches sub.example.com
-            if domainPattern.starts(with: "*.") {
-                let suffix = String(domainPattern.dropFirst(2))
-                return targetHost.hasSuffix(suffix) || targetHost == suffix
-            }
-            return targetHost == domainPattern
+            return matchesDomain(targetHost, pattern: domainPattern)
             
         case .ip(let ipPattern):
-            // TODO: CIDR matching
-            return targetHost.hasPrefix(ipPattern)
+            return matchesIP(targetHost, pattern: ipPattern)
         }
+    }
+    
+    private func matchesDomain(_ host: String, pattern: String) -> Bool {
+        // Wildcard matching: *.example.com matches sub.example.com
+        if pattern.starts(with: "*.") {
+            let suffix = String(pattern.dropFirst(2))
+            return host.hasSuffix(suffix) || host == suffix
+        }
+        // Exact match
+        return host == pattern
+    }
+    
+    private func matchesIP(_ host: String, pattern: String) -> Bool {
+        // Check if pattern is CIDR notation (e.g., 192.168.0.0/16)
+        if pattern.contains("/") {
+            return matchesCIDR(host, cidr: pattern)
+        }
+        // Exact IP match
+        return host == pattern
+    }
+    
+    private func matchesCIDR(_ ip: String, cidr: String) -> Bool {
+        let parts = cidr.split(separator: "/")
+        guard parts.count == 2,
+              let prefixLength = Int(parts[1]),
+              prefixLength >= 0 && prefixLength <= 32 else {
+            return false
+        }
+        
+        let networkIP = String(parts[0])
+        
+        guard let ipInt = ipToInt(ip),
+              let networkInt = ipToInt(networkIP) else {
+            return false
+        }
+        
+        // Create subnet mask
+        let mask: UInt32 = prefixLength == 0 ? 0 : ~UInt32(0) << (32 - prefixLength)
+        
+        return (ipInt & mask) == (networkInt & mask)
+    }
+    
+    private func ipToInt(_ ip: String) -> UInt32? {
+        let octets = ip.split(separator: ".").compactMap { UInt32($0) }
+        guard octets.count == 4, octets.allSatisfy({ $0 <= 255 }) else {
+            return nil
+        }
+        return (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]
     }
 }
