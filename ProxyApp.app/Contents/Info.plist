@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>ProxyApp</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.proxyApp.network</string>
+    <key>CFBundleName</key>
+    <string>ProxyApp</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    
+    <!-- Permission Request Descriptions -->
+    <key>NSSystemExtensionUsageDescription</key>
+    <string>ProxyApp needs to install a Network Extension to intercept and redirect network traffic according to your rules.</string>
+    
+    <key>NSNetworkExtensionUsageDescription</key>
+    <string>ProxyApp requires network extension permissions to manage proxy connections and route traffic through configured proxies.</string>
+    
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>ProxyApp needs to access the local network to provide proxy services and manage connections.</string>
+</dict>
+</plist>
